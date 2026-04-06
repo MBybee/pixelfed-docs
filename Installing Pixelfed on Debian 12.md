@@ -191,8 +191,9 @@ Several things are taken as "understood" for this guide.
    tcp        0      0 0.0.0.0:80              0.0.0.0:*               LISTEN
    ```
    
+
 This shows I've got 80, 443, and 22 listening (that's HTTP, HTTPS, and SSH) so those will be controlled by UFW. 
-   
+
 Everything else is running only on localhost. The prep is done, the rest of this will be specific to pixelfed.
 
 
@@ -644,15 +645,15 @@ Everything else is running only on localhost. The prep is done, the rest of this
 
 3. Want an age verification screen that doesn't seem so... intrustive? (YMMV, this depends on your legal jurisdiction, etc.)
 
-   
+
    1. Back up the age verification file
-   
+
       ```bash
       cp /data/pixelfed/resources/views/auth/curated-register/partials/step-1.blade.php /data/step-1.blade.php.bak
       ```
-   
+
    2. Edit the file, replace it with something... cleaner. Adjust this example to suit.
-   
+
       ```html
       @php
       $id = str_random(14);
@@ -799,11 +800,11 @@ Everything else is running only on localhost. The prep is done, the rest of this
       </script>
       @endpush
       ```
-   
+
    3. Clear everything yet again, and force reload the site.
-   
+
       
-   
+
 4. Some quick commands you'll be using a LOT
 
    ```bash
@@ -904,5 +905,36 @@ Everything else is running only on localhost. The prep is done, the rest of this
 
    After you do all that, clear the cache/config, restart the app AND the php fpm. Send a test email from artisan to confirm.
 
-8. The end. For now :D
+8. In the current build, there's a Direct Message bug (hopefully soon to be fixed). If you're seeing an error 500 and attempts to insert nulls in a not-null field:
+
+   ```bash
+   # Error in the laravel log would look like:
+   [2026-04-06 18:42:59] production.ERROR: SQLSTATE[23502]: Not null violation: 7 ERROR:  null value in column "rendered" of relation "statuses" violates not-null constraint
+   DETAIL:  Failing row contains (946839714159951879, null, test, null, 946822525473177601, null, null, null, f, direct, f, 0, 0, null, null, t, null, 945773222654533633, null, 2026-04-06 18:42:59, 2026-04-06 18:42:59, null, null, direct, null, null, f, null, null, null, null, null, null). (Connection: pgsql, Host: 127.0.0.1, Port: 5432, Database: pixelfed, SQL: insert into \"statuses\" (\"profile_id\", \"caption\", \"visibility\", \"scope\", \"in_reply_to_profile_id\", \"id\", \"updated_at\", \"created_at\") values (946822525473177601, test, direct, direct, 945773222654533633, 946839714159951879, 2026-04-06 18:42:59, 2026-04-06 18:42:59)) at /data/pixelfed/vendor/laravel/framework/src/Illuminate/Database/Connection.php:838)
+   [stacktrace]
+   
+   # A quick fix for this:
+   cp /data/pixelfed/app/Http/Controllers/DirectMessageController.php /data/pixelfed/app/Http/Controllers/DirectMessageController.php.bak
+   
+   # Edit app/Http/Controllers/DirectMessageController.php and insert this patch around line 170
+   # Just need to add $status->rendered = $msg
+   sed -n '170,180p' /data/pixelfed/app/Http/Controllers/DirectMessageController.php
+           $status->caption = $msg;
+   	// Patch for the DM failure
+   	$status->rendered = $msg;
+   	// End Patch
+           $status->visibility = 'direct';
+           $status->scope = 'direct';
+           $status->in_reply_to_profile_id = $recipient->id;
+           $status->save();
+   
+           $dm = new DirectMessage;
+           $dm->to_id = $recipient->id;
+   ```
+
+   Then clear/reload all the cache as always. 
+
+   
+
+9. The end. For now :D
 
